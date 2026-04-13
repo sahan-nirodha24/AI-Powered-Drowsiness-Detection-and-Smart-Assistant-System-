@@ -40,11 +40,11 @@ class AIVoiceAssistant:
         # Rate limit cooldown tracking
         self._gemini_blocked_until = 0.0
 
-        # Throttle — calls අතරෙ minimum 4s gap
+        # Throttle — calls  minimum 4s gap
         self._last_gemini_call = 0.0
         self.gemini_min_interval = 4.0
 
-        # Cache — එකම command repeat වුණොත් API call නැහැ
+        # Cache —  command repeat  API call 
         self._gemini_cache: Dict[str, str] = {}
         self._gemini_cache_max = 30  # max cached entries
 
@@ -174,7 +174,7 @@ class AIVoiceAssistant:
             print(f"[VoiceAssistant] Gemini cooldown: {remaining}s remaining. Using offline.")
             return None
 
-        # Throttle — calls අතරෙ minimum gap
+        # Throttle — calls  minimum gap
         if now - self._last_gemini_call < self.gemini_min_interval:
             print("[VoiceAssistant] Throttled. Using offline.")
             return None
