@@ -208,7 +208,7 @@ def main():
     print("[System] Loading TFLite ResNet model...")
     try:
         interpreter, input_details, output_details = load_tflite_model(MODEL_PATH)
-        print("[System] ✅ TFLite model loaded.")
+        print("[System]  TFLite model loaded.")
     except Exception as e:
         print(f"[System] Failed to load model: {e}")
         return
