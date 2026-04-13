@@ -101,16 +101,6 @@ class AIVoiceAssistant:
 
         msg = base.get(level.lower(), f"{name}, please stay alert.")
 
-        if "speed" in context:
-            try:
-                spd = float(context["speed"])
-                if spd >= 80:
-                    msg += " You are moving fast, be extra careful."
-                elif spd >= 40:
-                    msg += " You are currently moving; please drive carefully."
-            except:
-                pass
-
         if context.get("weather") in ["rainy", "foggy", "stormy"]:
             msg += " Road conditions are not ideal."
 
