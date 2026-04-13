@@ -18,16 +18,16 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 MODEL_PATH                  = "Models/resnet_quantized.tflite"   # TFLite model path
 IMG_SIZE                    = (224, 224)                          # model input size
 
-EYE_CLOSED_FRAMES_THRESH    = 30    # frames eyes must be closed to trigger alert
+EYE_CLOSED_FRAMES_THRESH    = 15    # frames eyes must be closed to trigger alert
 CNN_DROWSY_THRESHOLD        = 0.85  # minimum CNN score to consider drowsy
-CNN_DROWSY_CONSEC_THRESH    = 25    # consecutive drowsy frames needed to alert
+CNN_DROWSY_CONSEC_THRESH    = 15    # consecutive drowsy frames needed to alert
 WARMUP_DURATION             = 5.0   # seconds to wait before allowing any alerts
 ALERT_COOLDOWN              = 3.0   # minimum seconds between alerts
 MIC_INDEX                   = 1     # microphone device index
 
 # ── Global State ─────────────────────────────────────────────────────────────
-closed_frames       = 0       # number of consecutive frames eyes were not detected
-cnn_drowsy_frames   = 0       # number of consecutive frames CNN predicted drowsy
+closed_frames       = 0       # consecutive frames where eyes were not clearly open
+cnn_drowsy_frames   = 0       # consecutive frames CNN predicted drowsy
 invert_logic        = False   # toggle to invert CNN prediction (press i)
 start_time          = time.time()
 alert_active        = False   # whether an alert is currently being spoken
@@ -37,7 +37,7 @@ conversation_thread = None    # reference to conversation background thread
 
 # ── Initialize AI Voice Assistant ────────────────────────────────────────────
 assistant = AIVoiceAssistant(
-    driver_name="Praveen",
+    driver_name="driver",
     use_cloud_assistant=True,
     gemini_model_name="gemini-2.0-flash"
 )
@@ -82,7 +82,6 @@ def tflite_predict(interpreter, input_details, output_details, face_img_bgr):
         scale, zero_point = output_details[0]['quantization']
         output = (output.astype("float32") - zero_point) * scale
 
-    # Return (drowsy_score, non_drowsy_score)
     # Shape (1,2) → two class scores, shape (1,1) → sigmoid score
     if output.shape[-1] == 2:
         return float(output[0][0]), float(output[0][1])
@@ -252,6 +251,9 @@ def main():
         frame = cv2.flip(frame, 1)
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        # Normalize brightness to handle bright/dark lighting conditions
+        gray = cv2.equalizeHist(gray)
+
         # Detect faces in the frame
         faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(100, 100))
 
@@ -270,23 +272,24 @@ def main():
 
             roi_gray = gray[y:y+h, x:x+w]
 
-            # Detect eyes within the face region
+            # Equalize eye region separately for better detection in bright light
+            roi_eq = cv2.equalizeHist(roi_gray)
+
+            # Detect eyes within the equalized face region
             eyes = eye_cascade.detectMultiScale(
-                roi_gray,
-                scaleFactor=1.05,   # more sensitive than default
-                minNeighbors=3,
-                minSize=(25, 25)
+                roi_eq,
+                scaleFactor=1.1,
+                minNeighbors=4,
+                minSize=(20, 20)   # smaller min size handles bright light conditions
             )
             eye_count = len(eyes)
 
-            # Update closed_frames based on eye count
-            if eye_count == 0:
-                # No eyes detected → increment closed frame counter
-                closed_frames += 1
-            elif eye_count >= 2:
-                # Both eyes clearly visible → reset counter
+            # Only reset when both eyes clearly visible
+            # 0 or 1 eye detected → treat as closed
+            if eye_count >= 2:
                 closed_frames = 0
-            # eye_count == 1 → uncertain → leave counter unchanged
+            else:
+                closed_frames += 1
 
             # Draw rectangles around detected eyes
             for (ex, ey, ew, eh) in eyes:
@@ -320,8 +323,8 @@ def main():
                 cnn_status    = "Error"
                 is_cnn_drowsy = False
 
-            # Eyes are clearly open if 2+ detected, or 1 with no closed frames
-            eyes_clearly_open = (eye_count >= 2) or (eye_count == 1 and closed_frames == 0)
+            # Eyes clearly open only when 2 or more detected
+            eyes_clearly_open = (eye_count >= 2)
 
             # ── Combined Alert Logic ──────────────────────────────────────────
             if closed_frames > EYE_CLOSED_FRAMES_THRESH:

@@ -40,6 +40,14 @@ class AIVoiceAssistant:
         # Rate limit cooldown tracking
         self._gemini_blocked_until = 0.0
 
+        # Throttle — calls අතරෙ minimum 4s gap
+        self._last_gemini_call = 0.0
+        self.gemini_min_interval = 4.0
+
+        # Cache — එකම command repeat වුණොත් API call නැහැ
+        self._gemini_cache: Dict[str, str] = {}
+        self._gemini_cache_max = 30  # max cached entries
+
         if self.use_cloud_assistant:
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
@@ -126,26 +134,56 @@ class AIVoiceAssistant:
             self.speak("Stopping the assistant. Drive safely.")
             raise SystemExit
 
-        if "hello" in t:
-            self.speak("Hello! How can I help you?")
-        elif "time" in t:
+        # Greetings
+        if any(w in t for w in ["hello", "hi", "hey", "how are you", "how r u", "how are u", "wassup", "what's up", "whats up"]):
+            self.speak(f"I'm here and ready to help, {self.driver_name}. Stay focused on the road.")
+
+        # Time
+        elif any(w in t for w in ["time", "clock", "what time"]):
             now = datetime.now().strftime("%H:%M")
             self.speak(f"The time is {now}.")
+
+        # Drowsiness test
         elif "test" in t:
             self.alert_drowsiness("medium", {"speed": 60})
+
+        # Driver feeling tired/sleepy
+        elif any(w in t for w in ["tired", "sleepy", "drowsy", "sleep", "fatigue", "exhausted"]):
+            self.speak(f"{self.driver_name}, please pull over safely and take a short rest. Your safety matters.")
+
+        # Help request
+        elif any(w in t for w in ["help", "assist", "support", "what can you do", "commands"]):
+            self.speak("I can tell you the time, alert you about drowsiness, or just keep you company. Stay safe!")
+
+        # Acknowledgements / filler
+        elif any(w in t for w in ["ok", "okay", "thanks", "thank you", "got it", "alright", "sure", "fine"]):
+            self.speak("Alright. Stay alert and drive safe.")
+
+        # Fallback — friendly rather than an error message
         else:
-            self.speak("I did not understand that command.")
+            self.speak(f"I'm in offline mode right now, {self.driver_name}. I can help with the time or drowsiness alerts.")
 
     def _ask_cloud_assistant(self, user_text: str) -> Optional[str]:
         if not (self.use_cloud_assistant and self.gemini_model):
             return None
 
-        # Rate limit cooldown check - blocked  skip
+        # Rate limit cooldown check
         now = time.time()
         if now < self._gemini_blocked_until:
             remaining = int(self._gemini_blocked_until - now)
             print(f"[VoiceAssistant] Gemini cooldown: {remaining}s remaining. Using offline.")
             return None
+
+        # Throttle — calls අතරෙ minimum gap
+        if now - self._last_gemini_call < self.gemini_min_interval:
+            print("[VoiceAssistant] Throttled. Using offline.")
+            return None
+
+        # Cache check
+        cache_key = user_text.lower().strip()
+        if cache_key in self._gemini_cache:
+            print("[VoiceAssistant] Cache hit. Skipping API call.")
+            return self._gemini_cache[cache_key]
 
         try:
             prompt = (
@@ -155,28 +193,39 @@ class AIVoiceAssistant:
             )
             response = self.gemini_model.generate_content(prompt)
 
+            result = None
             if hasattr(response, "text"):
-                return response.text.strip()
-
-            if hasattr(response, "candidates"):
+                result = response.text.strip()
+            elif hasattr(response, "candidates"):
                 parts = response.candidates[0].content.parts
-                out = " ".join(getattr(p, "text", "") for p in parts).strip()
-                return out or None
+                result = " ".join(getattr(p, "text", "") for p in parts).strip() or None
 
-            return None
+            if result:
+                # Update throttle timestamp
+                self._last_gemini_call = time.time()
+                # Cache the result (limit cache size)
+                if len(self._gemini_cache) >= self._gemini_cache_max:
+                    self._gemini_cache.pop(next(iter(self._gemini_cache)))
+                self._gemini_cache[cache_key] = result
+
+            return result
 
         except Exception as e:
             error_str = str(e)
 
             # Rate limit detect  cooldown set 
             if "429" in error_str or "quota" in error_str.lower() or "rate" in error_str.lower():
-                # Error message retry seconds parse 
+                # Parse a short retry delay (1–3 digits only) to avoid capturing
+                # Unix timestamps or other large numbers in the error string.
                 cooldown = 60  # default 60s
                 try:
                     import re
-                    match = re.search(r"retry.*?(\d+)\s*s", error_str, re.IGNORECASE)
+                    # Only match 1–3 digit numbers (max 999s) before an "s" unit
+                    match = re.search(r"retry[^0-9]*?(\d{1,3})\s*s\b", error_str, re.IGNORECASE)
                     if match:
-                        cooldown = int(match.group(1)) + 5  # buffer 5s
+                        parsed = int(match.group(1)) + 5  # add 5s buffer
+                        # Sanity cap: never block for more than 5 minutes
+                        cooldown = min(parsed, 300)
                 except:
                     pass
 
@@ -194,11 +243,17 @@ class AIVoiceAssistant:
             self.handle_text_command(t)
             return
 
+        # Drowsiness keywords → offline only, never waste a Gemini call
+        drowsy_keywords = ["tired", "sleepy", "drowsy", "sleep", "fatigue", "exhausted"]
+        if any(w in t for w in drowsy_keywords):
+            self.handle_text_command(user_text)
+            return
+
         if not self.use_cloud_assistant:
             self.handle_text_command(t)
             return
 
-        # Gemini blocked  directly offline
+        # Gemini blocked → directly offline
         now = time.time()
         if now < self._gemini_blocked_until:
             self.handle_text_command(user_text)
@@ -210,5 +265,4 @@ class AIVoiceAssistant:
         if response:
             self.speak(response)
         else:
-            # Offline fallback - "unavailable" message , directly answer
             self.handle_text_command(user_text)
