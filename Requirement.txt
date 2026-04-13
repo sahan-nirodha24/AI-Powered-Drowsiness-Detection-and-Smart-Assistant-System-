@@ -1,0 +1,10 @@
+# Core requirements (Windows 11)
+setuptools>=65.0.0
+pint>=0.20.0
+obd>=0.7.1
+pandas>=2.0.0
+openpyxl>=3.1.0
+pyserial>=3.5
+
+# Optional: Try installing pybluez if you want Bluetooth auto-detection
+# pip install pybluez
