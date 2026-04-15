@@ -24,7 +24,7 @@ class AIVoiceAssistant:
         driver_name: Optional[str] = None,
         language: str = "en",
         use_cloud_assistant: bool = False,
-        gemini_model_name: str = "models/gemini-2.0-flash",  # 2.5 → 2.0
+        gemini_model_name: str = "models/gemini-2.5-flash",  # 2.5 → 2.0
     ) -> None:
 
         self.driver_name = driver_name or "driver"
@@ -42,7 +42,7 @@ class AIVoiceAssistant:
 
         # Throttle — calls  minimum 4s gap
         self._last_gemini_call = 0.0
-        self.gemini_min_interval = 4.0
+        self.gemini_min_interval = 8.0
 
         # Cache —  command repeat  API call 
         self._gemini_cache: Dict[str, str] = {}

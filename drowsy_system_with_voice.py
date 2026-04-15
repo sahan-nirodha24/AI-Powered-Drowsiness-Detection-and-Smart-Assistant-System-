@@ -39,7 +39,7 @@ conversation_thread = None    # reference to conversation background thread
 assistant = AIVoiceAssistant(
     driver_name="driver",
     use_cloud_assistant=True,
-    gemini_model_name="gemini-2.0-flash"
+    gemini_model_name="models/gemini-2.5-flash"
 )
 
 
