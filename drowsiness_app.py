@@ -32,7 +32,7 @@ except Exception as e:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # --- Configuration ---
-MODEL_PATH = "Models/drowsiness_model_mobilenet.h5"
+MODEL_PATH = "Models/drowsiness_model_resnet.h5"
 LABELS = ["Drowsy", "Non-Drowsy"] 
 IMG_SIZE = (224, 224)
 
@@ -328,7 +328,7 @@ def main():
                 face_img = frame[y:y+h, x:x+w]
                 face_img_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
                 resized = cv2.resize(face_img_rgb, IMG_SIZE)
-                normalized = tf.keras.applications.mobilenet_v2.preprocess_input(resized.astype('float32'))
+                normalized = tf.keras.applications.resnet50.preprocess_input(resized.astype('float32'))
                 reshaped = np.reshape(normalized, (1, 224, 224, 3))
 
                 prediction = model.predict(reshaped, verbose=0)
