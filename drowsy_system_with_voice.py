@@ -14,7 +14,7 @@ load_dotenv()
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-# ── Detection & Model Settings ───────────────────────────────────────────────
+# ── Detection & Model Settings 
 MODEL_PATH                  = "Models/resnet_quantized.tflite"   # TFLite model path
 IMG_SIZE                    = (224, 224)                          # model input size
 
