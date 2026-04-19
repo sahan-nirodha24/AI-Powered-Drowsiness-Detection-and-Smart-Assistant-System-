@@ -14,7 +14,7 @@ load_dotenv()
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-# ── Detection & Model Settings 
+# Detection & Model Settings 
 MODEL_PATH                  = "Models/resnet_quantized.tflite"   # TFLite model path
 IMG_SIZE                    = (224, 224)                          # model input size
 
@@ -25,7 +25,7 @@ WARMUP_DURATION             = 5.0   # seconds to wait before allowing any alerts
 ALERT_COOLDOWN              = 3.0   # minimum seconds between alerts
 MIC_INDEX                   = 1     # microphone device index
 
-# ── Global State ─────────────────────────────────────────────────────────────
+#  Global State 
 closed_frames       = 0       # consecutive frames where eyes were not clearly open
 cnn_drowsy_frames   = 0       # consecutive frames CNN predicted drowsy
 invert_logic        = False   # toggle to invert CNN prediction (press i)
@@ -35,7 +35,7 @@ last_alert_time     = 0.0     # timestamp of the last alert
 conversation_mode   = False   # whether continuous conversation is active
 conversation_thread = None    # reference to conversation background thread
 
-# ── Initialize AI Voice Assistant ────────────────────────────────────────────
+#  Initialize AI Voice Assistant
 assistant = AIVoiceAssistant(
     driver_name="driver",
     use_cloud_assistant=True,
@@ -43,7 +43,7 @@ assistant = AIVoiceAssistant(
 )
 
 
-# ── Load TFLite Model ─────────────────────────────────────────────────────────
+# Load TFLite Model 
 def load_tflite_model(path: str):
     interpreter = tf.lite.Interpreter(model_path=path)
     interpreter.allocate_tensors()
@@ -55,7 +55,7 @@ def load_tflite_model(path: str):
     return interpreter, input_details, output_details
 
 
-# ── Run TFLite Inference ──────────────────────────────────────────────────────
+# Run TFLite Inference 
 def tflite_predict(interpreter, input_details, output_details, face_img_bgr):
     # Convert BGR to RGB and resize to model input size
     face_rgb     = cv2.cvtColor(face_img_bgr, cv2.COLOR_BGR2RGB)
@@ -90,7 +90,7 @@ def tflite_predict(interpreter, input_details, output_details, face_img_bgr):
         return score, 1.0 - score
 
 
-# ── Context Helpers (can be connected to GPS / weather API) ───────────────────
+#  Context Helpers (can be connected to GPS / weather API) 
 def get_speed() -> float:
     return 60.0
 
@@ -98,7 +98,7 @@ def get_weather() -> str:
     return "clear"
 
 
-# ── Trigger Voice Alert (non-blocking, runs in background thread) ─────────────
+# Trigger Voice Alert (non-blocking, runs in background thread) 
 def trigger_voice_alert(level, custom_message=None):
     global alert_active, last_alert_time
     now = time.time()
@@ -136,7 +136,7 @@ def trigger_voice_alert(level, custom_message=None):
     threading.Thread(target=_run, daemon=True).start()
 
 
-# ── Listen Once From Microphone ───────────────────────────────────────────────
+# ── Listen Once From Microphone 
 def listen_once(recognizer, microphone):
     with microphone as source:
         print("[System] Listening to driver...")
@@ -208,7 +208,7 @@ def main():
     print("[System] Loading TFLite ResNet model...")
     try:
         interpreter, input_details, output_details = load_tflite_model(MODEL_PATH)
-        print("[System]  TFLite model loaded.")
+        print("[System] TFLite model loaded.")
     except Exception as e:
         print(f"[System] Failed to load model: {e}")
         return
@@ -326,7 +326,7 @@ def main():
             # Eyes clearly open only when 2 or more detected
             eyes_clearly_open = (eye_count >= 2)
 
-            # ── Combined Alert Logic ──────────────────────────────────────────
+            #  Combined Alert Logic 
             if closed_frames > EYE_CLOSED_FRAMES_THRESH:
                 # Eyes closed too long → HIGH alert
                 cnn_drowsy_frames = 0
@@ -355,7 +355,7 @@ def main():
                 final_status      = "Active"
                 alert_color       = (0, 255, 0)
 
-            # ── Draw Overlays ─────────────────────────────────────────────────
+            # Draw Overlays 
             cv2.putText(frame, final_status,
                         (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, alert_color, 2)

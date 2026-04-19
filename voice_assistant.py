@@ -42,7 +42,7 @@ class AIVoiceAssistant:
 
         # Throttle — calls  minimum 4s gap
         self._last_gemini_call = 0.0
-        self.gemini_min_interval = 8.0
+        self.gemini_min_interval = 4.0
 
         # Cache —  command repeat  API call 
         self._gemini_cache: Dict[str, str] = {}
