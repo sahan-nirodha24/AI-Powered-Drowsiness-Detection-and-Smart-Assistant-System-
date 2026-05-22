@@ -4,8 +4,9 @@ import random
 from pathlib import Path
 
 # Configuration
-SOURCE_DIR = r"c:\Users\SAHAN\Desktop\SVM\Imageset"
-TARGET_BASE_DIR = r"c:\Users\SAHAN\Desktop\SVM\dataset_split"
+BASE_DIR = Path(__file__).parent.absolute()
+SOURCE_DIR = BASE_DIR / "Imageset"
+TARGET_BASE_DIR = BASE_DIR / "dataset_split"
 SPLIT_RATIOS = (0.7, 0.15, 0.15)  # Train, Val, Test
 
 def create_structure():
@@ -14,16 +15,16 @@ def create_structure():
         shutil.rmtree(TARGET_BASE_DIR)
     
     for split in ['train', 'val', 'test']:
-        for category in ['drowsy', 'non_drowsy']:
+        for category in ['distracted', 'drowsy', 'non_drowsy', 'yawn']:
             os.makedirs(os.path.join(TARGET_BASE_DIR, split, category), exist_ok=True)
 
 def get_image_files(base_path):
     image_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
     files_list = []
     
-    # Structure: Type (BW/Color) -> Category (Drowsy/Non) -> Glasses (With/Without)
+    # Structure: Type (BW/Color) -> Glasses (With/Without) -> Category (distracted/drowsy/non-drowsy/yawn)
     # Actually based on exploration:
-    # Imageset -> Black & White -> drowsy -> with glasses
+    # Imageset -> Black & White -> with glasses -> drowsy 
     
     # We will traverse recursively
     for root, dirs, files in os.walk(base_path):
@@ -33,21 +34,20 @@ def get_image_files(base_path):
                 
                 # Extract metadata from path
                 # Path parts relative to Imageset:
-                # e.g. "Black & White\drowsy\with glasses\img.jpg"
+                # e.g. "Black & White\with glasses\drowsy\img.jpg"
                 rel_parts = full_path.relative_to(base_path).parts
                 
                 if len(rel_parts) < 3:
                     continue
                 
                 img_type = rel_parts[0] # "Black & White" or "Colored"
-                category_raw = rel_parts[1] # "drowsy" or "non-drowsy"
-                glasses = rel_parts[2] # "with glasses" or "without glasses"
+                glasses = rel_parts[1] # "with glasses" or "without glasses"
+                category_raw = rel_parts[2] # "distracted", "drowsy", "non-drowsy", "yawn"
                 
                 # Normalize for SVM classes
-                if "non" in category_raw.lower():
-                    final_category = "non_drowsy"
-                else:
-                    final_category = "drowsy"
+                final_category = category_raw.lower().replace("-", "_")
+                if final_category not in ['distracted', 'drowsy', 'non_drowsy', 'yawn']:
+                    continue
                     
                 # Simplify metadata for filename
                 type_code = "bw" if "black" in img_type.lower() else "col"
@@ -64,9 +64,10 @@ def split_and_copy(files_list):
     # Group by category to ensure stratified split if needed, 
     # but simple shuffle per category is usually sufficient.
     
-    category_map = {'drowsy': [], 'non_drowsy': []}
+    category_map = {c: [] for c in ['distracted', 'drowsy', 'non_drowsy', 'yawn']}
     for f in files_list:
-        category_map[f['category']].append(f)
+        if f['category'] in category_map:
+            category_map[f['category']].append(f)
         
     for category, items in category_map.items():
         random.shuffle(items)

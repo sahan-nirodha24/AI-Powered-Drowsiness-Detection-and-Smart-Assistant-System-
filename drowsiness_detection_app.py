@@ -125,61 +125,85 @@ def main():
 
             # --- Mechanism 2: SVM Analysis ---
             svm_status = "Unknown"
-            is_svm_drowsy = False
-            svm_drowsy_prob = 0.0
+            pred_class_name = "Unknown"
+            pred_prob = 0.0
+            probs = [0.0, 0.0, 0.0, 0.0]
             
             if MODELS_LOADED:
                 try:
-                    face_img = frame[y:y+h, x:x+w]
-                    face_resized = cv2.resize(face_img, (IMG_SIZE[1], IMG_SIZE[0]))
-                    face_gray_svm = cv2.cvtColor(face_resized, cv2.COLOR_BGR2GRAY)
+                    # The SVM was trained on square 224x224 images.
+                    # We must take a center square crop of the webcam frame to preserve the aspect ratio (no squashing)
+                    h_cam, w_cam = frame.shape[:2]
+                    min_dim = min(h_cam, w_cam)
+                    start_x = (w_cam - min_dim) // 2
+                    start_y = (h_cam - min_dim) // 2
+                    square_frame = frame[start_y:start_y+min_dim, start_x:start_x+min_dim]
                     
-                    features = extract_feature_vector(face_gray_svm)
-                    val = svm_model.decision_function([features])[0]
-                    svm_drowsy_prob = 1.0 / (1.0 + np.exp(-val)) # Probability of being Drowsy
+                    frame_resized = cv2.resize(square_frame, (IMG_SIZE[1], IMG_SIZE[0]))
+                    frame_gray_svm = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
                     
-                    if svm_drowsy_prob > SVM_DROWSY_THRESHOLD:
-                        is_svm_drowsy = True
-                        svm_status = "DROWSY"
-                        status_color = (0, 0, 255) # Red
-                    else:
-                        svm_status = "ACTIVE"
-                        status_color = (0, 255, 0) # Green
-                        
+                    # Show the exact image the SVM is looking at for debugging
+                    cv2.imshow("SVM Input Debug", frame_gray_svm)
+                    
+                    features = extract_feature_vector(frame_gray_svm)
+                    scores = svm_model.decision_function([features])[0]
+                    # Softmax for multi-class pseudo-probabilities
+                    exp_scores = np.exp(scores - np.max(scores))
+                    probs = exp_scores / np.sum(exp_scores)
+                    
+                    pred_class_idx = np.argmax(probs)
+                    pred_class_name = label_map['classes'][pred_class_idx]
+                    pred_prob = probs[pred_class_idx]
+                    
+                    svm_status = pred_class_name.upper()
                 except Exception as e:
                     print(f"SVM Error: {e}")
 
             # --- Logic & Visuals ---
             final_status = svm_status if MODELS_LOADED else "Monitoring"
-            alert_msg = "You are active."
+            alert_msg = ""
             is_serious_alert = False
             should_alert = False
 
             # --- SVM + Haar Synergy Logic ---
             is_eyes_closed = (closed_frames > EYE_CLOSED_FRAMES_THRESH)
-            is_yawning = is_svm_drowsy and not is_eyes_closed
+            
+            # Yawn logic: SVM detects yawn
+            is_yawning_svm = (pred_class_name.upper() == "YAWN")
+            
+            # Distracted logic: SVM detects distracted
+            is_distracted_svm = (pred_class_name.upper() == "DISTRACTED")
+            
+            # Drowsy logic: SVM detects drowsy OR eyes closed by Haar
+            is_drowsy_svm = (pred_class_name.upper() == "DROWSY")
 
             if is_eyes_closed:
                 final_status = "DROWSY - Eyes Closed"
-                status_color = (0, 0, 255)
+                status_color = (0, 0, 255) # Red
                 should_alert = True
                 alert_msg = "Driver Alert: Eyes closed."
                 is_serious_alert = True
-            elif is_yawning:
-                final_status = "YAWNING"
+            elif is_drowsy_svm:
+                final_status = "DROWSY - SVM Detected"
+                status_color = (0, 0, 255) # Red
+                should_alert = True
+                alert_msg = "Driver Alert: You are drowsy."
+                is_serious_alert = True
+            elif is_yawning_svm:
+                final_status = "YAWNING - SVM Detected"
                 status_color = (0, 165, 255) # Orange
                 should_alert = True
                 alert_msg = "Warning: Yawning detected."
                 is_serious_alert = False
-            elif is_svm_drowsy:
-                final_status = "DROWSY - SVM Detected"
-                status_color = (0, 0, 255)
+            elif is_distracted_svm:
+                final_status = "DISTRACTED - SVM Detected"
+                status_color = (255, 0, 255) # Purple
                 should_alert = True
-                alert_msg = "Driver Alert: You are drowsy."
-                is_serious_alert = True
+                alert_msg = "Warning: Please focus on the road."
+                is_serious_alert = False
             else:
                 final_status = "ACTIVE"
-                status_color = (0, 255, 0)
+                status_color = (0, 255, 0) # Green
                 should_alert = False
                 alert_msg = ""
 
@@ -200,14 +224,10 @@ def main():
                 cv2.rectangle(frame, (bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h), (50, 50, 50), -1)
                 
                 # Filled Portion based on Probability
-                fill_w = int(svm_drowsy_prob * bar_w)
-                # Color gradients for bar: Green -> Yellow -> Red
-                if svm_drowsy_prob < 0.5: bar_color = (0, 255, 0)
-                elif svm_drowsy_prob < 0.8: bar_color = (0, 255, 255)
-                else: bar_color = (0, 0, 255)
+                fill_w = int(pred_prob * bar_w)
                 
-                cv2.rectangle(frame, (bar_x, bar_y), (bar_x+fill_w, bar_y+bar_h), bar_color, -1)
-                cv2.putText(frame, f"Drowsiness Lvl: {int(svm_drowsy_prob*100)}%", (bar_x, bar_y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.rectangle(frame, (bar_x, bar_y), (bar_x+fill_w, bar_y+bar_h), status_color, -1)
+                cv2.putText(frame, f"{final_status}: {int(pred_prob*100)}%", (bar_x, bar_y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
             # Trigger Audio
             current_time = time.time()
