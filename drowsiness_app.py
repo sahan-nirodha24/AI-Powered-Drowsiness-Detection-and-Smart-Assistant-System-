@@ -26,6 +26,34 @@ try:
     MEDITPIPE_AVAILABLE = True
 except Exception as e:
     MEDITPIPE_AVAILABLE = False
+import os
+import cv2
+import numpy as np
+import tensorflow as tf
+import threading
+import time
+import sys
+
+# Audio Libraries
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+try:
+    import pyttsx3
+    voice_engine = pyttsx3.init()
+except ImportError:
+    voice_engine = None
+    print("Warning: 'pyttsx3' not found. Voice alerts disabled. Install with `pip install pyttsx3`.")
+
+# --- MediaPipe Integration for Mouth Detection ---
+try:
+    import mediapipe as mp
+    mp_face_mesh = mp.solutions.face_mesh
+    MEDITPIPE_AVAILABLE = True
+except Exception as e:
+    MEDITPIPE_AVAILABLE = False
     print(f"Warning: MediaPipe Error ({e}). Mouth/Yawn detection disabled. Install via `pip install mediapipe`.")
 
 # --- Mute TensorFlow Logs ---
@@ -33,7 +61,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # --- Configuration ---
 MODEL_PATH = "Models/drowsiness_model_resnet.h5"
-LABELS = ["Drowsy", "Non-Drowsy"] 
+LABELS = ["distracted", "drowsy", "non-drowsy", "yawn"] 
 IMG_SIZE = (224, 224)
 
 # Thresholds & Parameters
@@ -320,52 +348,71 @@ def main():
                 for (ex, ey, ew, eh) in eyes:
                     cv2.rectangle(frame, (x+ex, y+ey), (x+ex+ew, y+ey+eh), (0, 255, 0), 1)
 
-            # --- Mechanism 2: CNN Inference ---
+            # --- Mechanism 2: CNN Inference (Multi-Class) ---
             cnn_status = "Unknown"
-            is_cnn_drowsy = False
+            cnn_status_label = "unknown"
             
             try:
-                face_img = frame[y:y+h, x:x+w]
+                # Add margin so the CNN can see the phone, hands, and water bottle
+                margin_x = int(w * 0.3) # 30% wider
+                margin_y = int(h * 0.3) # 30% taller
+                
+                y1 = max(0, y - margin_y)
+                y2 = min(frame.shape[0], y + h + margin_y)
+                x1 = max(0, x - margin_x)
+                x2 = min(frame.shape[1], x + w + margin_x)
+                
+                face_img = frame[y1:y2, x1:x2]
                 face_img_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
                 resized = cv2.resize(face_img_rgb, IMG_SIZE)
                 normalized = tf.keras.applications.resnet50.preprocess_input(resized.astype('float32'))
                 reshaped = np.reshape(normalized, (1, 224, 224, 3))
 
                 prediction = model.predict(reshaped, verbose=0)
-                raw_drowsy_score = prediction[0][0]
-                raw_non_drowsy_score = prediction[0][1]
+                cnn_class_idx = np.argmax(prediction[0])
+                confidence = prediction[0][cnn_class_idx]
                 
-                is_cnn_drowsy = raw_drowsy_score > raw_non_drowsy_score
-                if invert_logic: is_cnn_drowsy = not is_cnn_drowsy
+                cnn_status_label = LABELS[cnn_class_idx]
                 
-                cnn_status = f"DROWSY ({raw_drowsy_score:.2f})" if is_cnn_drowsy else f"Active ({raw_non_drowsy_score:.2f})"
+                if invert_logic: # Only basic inversion for testing
+                    if cnn_status_label == "drowsy": cnn_status_label = "non-drowsy"
+                    elif cnn_status_label == "non-drowsy": cnn_status_label = "drowsy"
+                
+                cnn_status = f"{cnn_status_label.upper()} ({confidence:.2f})"
 
             except Exception as e:
                 print(f"CNN Error: {e}")
 
-            # --- Consolidated Alert Logic ---
+            # --- Consolidated Alert Logic (Synergy) ---
             final_status = "Scanning..."
             alert_color = (0, 255, 0)
             
             eyes_are_closed = (closed_frames > EYE_CLOSED_FRAMES_THRESH)
+            is_cnn_drowsy = (cnn_status_label == "drowsy")
+            is_cnn_yawn = (cnn_status_label == "yawn")
+            is_cnn_distracted = (cnn_status_label == "distracted")
             
-            if eyes_are_closed and is_yawning:
-                final_status = "DROWSY LEVEL: CRITICAL (Closed & Yawning)"
+            # Critical: Closed eyes + Yawning (MediaPipe) or CNN Drowsy + Yawning
+            if (eyes_are_closed and is_yawning) or (is_cnn_drowsy and is_cnn_yawn):
+                final_status = "DROWSY LEVEL: CRITICAL"
                 alert_color = (0, 0, 255)
                 trigger_alert("CRITICAL ALERT! Wake up immediately!", is_serious=True)
                 
-            elif eyes_are_closed:
-                final_status = "DROWSY LEVEL: HIGH (Eyes Closed)"
+            # High: Eyes closed (MediaPipe) or CNN predicts Drowsy
+            elif eyes_are_closed or is_cnn_drowsy:
+                final_status = f"DROWSY: HIGH ({'CNN' if is_cnn_drowsy else 'EAR'})"
                 alert_color = (0, 0, 255)
-                trigger_alert("Driver Alert! Your eyes are closed.", is_serious=True)
+                trigger_alert("Driver Alert! You are drowsy.", is_serious=True)
             
-            elif is_cnn_drowsy:
-                final_status = f"CNN: {cnn_status}"
-                alert_color = (0, 0, 255)
-                trigger_alert("Wake up! You are drowsy.", is_serious=True)
+            # Warning: Distracted (CNN)
+            elif is_cnn_distracted:
+                final_status = "WARNING: DISTRACTED!"
+                alert_color = (0, 165, 255) # Orange warning
+                trigger_alert("Warning! Distraction detected. Focus on the road.", is_serious=False)
                 
-            elif is_yawning:
-                final_status = "YAWNING DETECTED!"
+            # Warning: Yawning (MediaPipe or CNN)
+            elif is_yawning or is_cnn_yawn:
+                final_status = f"YAWNING ({'CNN' if is_cnn_yawn else 'MAR'})"
                 alert_color = (0, 165, 255) # Orange warning
                 trigger_alert("Warning! You are yawning.", is_serious=False)
                 

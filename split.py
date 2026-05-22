@@ -60,8 +60,8 @@ def split_dataset():
     logging.info(f"Using Source Directory: {source_dir.absolute()}")
     
     # Target Categories to merge into
-    # We explicitly look for folders named 'drowsy' and 'non-drowsy' anywhere in the tree
-    target_classes = ['drowsy', 'non-drowsy']
+    # We explicitly look for folders named 'distracted', 'drowsy', 'non-drowsy', and 'yawn' anywhere in the tree
+    target_classes = ['distracted', 'drowsy', 'non-drowsy', 'yawn']
     
     # Reset Output Directory
     setup_directories(target_classes)
@@ -111,19 +111,19 @@ def split_dataset():
         for split_name, split_files in splits.items():
             for f in split_files:
                 # Custom Naming Logic: Color_Glasses_OriginalName
-                # Expected Source Path: Source / Color / State / Glasses / Image
+                # Expected Source Path: Source / Color / Glasses / State / Image
                 try:
                     rel_path = f.relative_to(source_dir)
                     parts = rel_path.parts
                     
                     if len(parts) >= 4:
                         # parts[0] = 'Black & White' or 'Colored'
-                        # parts[1] = 'drowsy' or 'non-drowsy'
-                        # parts[2] = 'with glasses' or 'without glasses'
+                        # parts[1] = 'with glasses' or 'without glasses'
+                        # parts[2] = 'distracted', 'drowsy', 'non-drowsy', or 'yawn'
                         # parts[3] = filename
                         
                         color_prefix = parts[0].replace(" ", "") # 'Black & White' -> 'Black&White'
-                        glasses_suffix = parts[2].replace(" ", "_") # 'with glasses' -> 'with_glasses'
+                        glasses_suffix = parts[1].replace(" ", "_") # 'with glasses' -> 'with_glasses'
                         
                         new_name = f"{color_prefix}_{glasses_suffix}_{parts[-1]}"
                     else:
