@@ -66,13 +66,13 @@ IMG_SIZE = (224, 224)
 
 # Thresholds & Parameters
 DROWSY_THRESHOLD = 0.5 
-EYE_CLOSED_FRAMES_THRESH = 10  # Consecutive frames with 0 eyes to trigger alert
+EYE_CLOSED_FRAMES_THRESH = 8   # Consecutive frames below EAR threshold to trigger alert
 WARMUP_DURATION = 5.0          # Seconds to wait before alerting
 ALERT_COOLDOWN = 3.0           # Seconds between alerts
 
 # Yawn Detection Parameters
-YAWN_THRESH = 0.6              # MAR value above which mouth is considered open
-YAWN_FRAMES_THRESH = 15        # Consecutive frames to confirm a yawn
+YAWN_THRESH = 0.45             # Scientifically accurate MAR threshold for normal/medium yawns
+YAWN_FRAMES_THRESH = 8         # Faster responsiveness (~0.25s of open mouth)
 
 # --- State Management ---
 alert_active = False 
@@ -222,6 +222,9 @@ def main():
     print("--- Drowsiness Detection System (CNN + Yawn) ---")
     print("Press 'q' to Quit | 'i' to Invert Logic | 'd' Toggle Debug")
     debug_mode = False
+    last_box = None
+    last_box_timer = 0
+    cnn_history = []
 
     print("Starting Main Loop...")
     while True:
@@ -237,6 +240,13 @@ def main():
         # === A. Face & Eye Detection (Cascade) ===
         try:
             faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(100, 100))
+            if len(faces) > 0:
+                last_box = faces[0]
+                last_box_timer = 0
+            elif last_box is not None and last_box_timer < 30:
+                # If face is temporarily occluded by phone/bottle, use last known position
+                faces = [last_box]
+                last_box_timer += 1
         except Exception as e:
             print(f"Face Cascade Error: {e}")
             continue
@@ -253,12 +263,12 @@ def main():
                     for face_landmarks in results.multi_face_landmarks:
                         mar_value = calculate_mar(face_landmarks)
                         
-                        # Calculate EAR for Eye Closed Detection
+                        # Calculate EAR for Eye Closed / Drowsy Detection
                         ear_value = calculate_ear(face_landmarks)
-                        if ear_value < 0.22:
+                        if ear_value < 0.25: # 0.25 catches heavy lidded / drowsy eyes reliably
                             closed_frames += 1
                         else:
-                            closed_frames = 0
+                            closed_frames = max(0, closed_frames - 1) # Gradual decay prevents flickering
                             
                         if mar_value > YAWN_THRESH:
                             yawn_frames += 1
@@ -269,7 +279,7 @@ def main():
                             cv2.circle(frame, (int(t_lip.x * w), int(t_lip.y * h)), 2, (0, 255, 255), -1)
                             cv2.circle(frame, (int(b_lip.x * w), int(b_lip.y * h)), 2, (0, 255, 255), -1)
                         else:
-                            yawn_frames = 0
+                            yawn_frames = max(0, yawn_frames - 1) # Gradual decay prevents flickering
                             
                         if yawn_frames > YAWN_FRAMES_THRESH:
                             is_yawning = True
@@ -343,7 +353,7 @@ def main():
                 if len(eyes) == 0:
                     closed_frames += 1
                 else:
-                    closed_frames = 0
+                    closed_frames = max(0, closed_frames - 1)
                 
                 for (ex, ey, ew, eh) in eyes:
                     cv2.rectangle(frame, (x+ex, y+ey), (x+ex+ew, y+ey+eh), (0, 255, 0), 1)
@@ -353,12 +363,13 @@ def main():
             cnn_status_label = "unknown"
             
             try:
-                # Add margin so the CNN can see the phone, hands, and water bottle
-                margin_x = int(w * 0.3) # 30% wider
-                margin_y = int(h * 0.3) # 30% taller
+                # Expand bounding box: 45% sideways (for phones at ear) and 60% downwards (for water bottles at chest/neck)
+                margin_x = int(w * 0.45)
+                margin_y_top = int(h * 0.25)
+                margin_y_bottom = int(h * 0.60)
                 
-                y1 = max(0, y - margin_y)
-                y2 = min(frame.shape[0], y + h + margin_y)
+                y1 = max(0, y - margin_y_top)
+                y2 = min(frame.shape[0], y + h + margin_y_bottom)
                 x1 = max(0, x - margin_x)
                 x2 = min(frame.shape[1], x + w + margin_x)
                 
@@ -372,11 +383,22 @@ def main():
                 cnn_class_idx = np.argmax(prediction[0])
                 confidence = prediction[0][cnn_class_idx]
                 
-                cnn_status_label = LABELS[cnn_class_idx]
+                # 1. Confidence filtering: If model is < 50% sure, default to active (non-drowsy)
+                if confidence < DROWSY_THRESHOLD:
+                    cnn_status_label = "non-drowsy"
+                else:
+                    cnn_status_label = LABELS[cnn_class_idx]
                 
                 if invert_logic: # Only basic inversion for testing
                     if cnn_status_label == "drowsy": cnn_status_label = "non-drowsy"
                     elif cnn_status_label == "non-drowsy": cnn_status_label = "drowsy"
+                
+                # 2. Prediction Smoothing: 5-frame rolling majority vote prevents 1-frame noise/flickering
+                cnn_history.append(cnn_status_label)
+                if len(cnn_history) > 5:
+                    cnn_history.pop(0)
+                from collections import Counter
+                cnn_status_label = Counter(cnn_history).most_common(1)[0][0]
                 
                 cnn_status = f"{cnn_status_label.upper()} ({confidence:.2f})"
 
