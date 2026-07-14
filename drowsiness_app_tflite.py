@@ -450,7 +450,7 @@ def main():
             else:
                 final_status = "You are Active"
                 alert_color = (0, 255, 0)
-                trigger_alert("You are fully attentive in driving stage", is_serious=False)
+                trigger_alert("You are fully attentive in the driving stage", is_serious=False)
 
             # Debug Overlay
             cv2.putText(frame, final_status, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, alert_color, 2)
