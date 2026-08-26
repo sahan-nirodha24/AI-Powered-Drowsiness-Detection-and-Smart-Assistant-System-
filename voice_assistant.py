@@ -24,7 +24,7 @@ class AIVoiceAssistant:
         driver_name: Optional[str] = None,
         language: str = "en",
         use_cloud_assistant: bool = False,
-        gemini_model_name: str = "models/gemini-2.5-flash",  # 2.5
+        gemini_model_name: str = "models/gemini-2.5-flash",  # 2.5 
     ) -> None:
 
         self.driver_name = driver_name or "driver"
@@ -56,7 +56,18 @@ class AIVoiceAssistant:
             else:
                 try:
                     genai.configure(api_key=api_key)
-                    self.gemini_model = genai.GenerativeModel(self.gemini_model_name)
+                    self.gemini_model = genai.GenerativeModel(
+                        model_name=self.gemini_model_name,
+                        system_instruction=(
+                            "You are a friendly AI driving assistant keeping a sleepy driver awake. "
+                            "Use VERY simple, everyday English (max 2 sentences).\n"
+                            "CRITICAL RULES:\n"
+                            "1. If the driver asks you a question, ONLY answer it. STRICTLY DO NOT ask any questions back.\n"
+                            "2. Only ask a follow-up question if the driver gives a short statement like 'yes' or 'no' to keep the conversation going.\n"
+                            "3. Do NOT use complex words or hard trivia."
+                        )
+                    )
+                    self.chat_session = self.gemini_model.start_chat(history=[])
                     print(f"[VoiceAssistant] Gemini enabled ({self.gemini_model_name}).")
                 except Exception as e:
                     print(f"[VoiceAssistant] Failed to init Gemini: {e}")
@@ -64,8 +75,13 @@ class AIVoiceAssistant:
 
     def _configure_engine(self) -> None:
         try:
-            self.engine.setProperty("rate", 150)
+            self.engine.setProperty("rate", 140)
             self.engine.setProperty("volume", 1.0)
+            voices = self.engine.getProperty('voices')
+            for voice in voices:
+                if 'zira' in voice.name.lower() or 'female' in voice.name.lower():
+                    self.engine.setProperty('voice', voice.id)
+                    break
         except Exception as e:
             print(f"[VoiceAssistant] TTS config error: {e}")
 
@@ -74,18 +90,26 @@ class AIVoiceAssistant:
             return
         print(f"[Assistant] {text}")
         try:
-            import subprocess, json
-            ps_text = json.dumps(text)
-            cmd = [
-                "powershell", "-Command",
-                (
-                    "Add-Type -AssemblyName System.Speech;"
-                    "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
-                    "$s.Rate = 0; $s.Volume = 100;"
-                    f"$s.Speak({ps_text});"
-                ),
-            ]
-            subprocess.run(cmd, check=False)
+            import subprocess, json, re
+            # Clean LLM markdown symbols and emojis that make TTS sound garbled
+            # Keep only alphanumeric characters, spaces, and basic punctuation (no double quotes to avoid backslash escaping issues in PowerShell)
+            clean_text = re.sub(r"[^a-zA-Z0-9\s.,!?'-]", '', text)
+            ps_text = json.dumps(clean_text)
+            
+            ps_script = (
+                "Add-Type -AssemblyName System.Speech;"
+                "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+                "$s.Rate = -1; $s.Volume = 100;"
+                # Select a clearer female voice (Zira) if available
+                "$voice = $s.GetInstalledVoices() | Where-Object {$_.VoiceInfo.Name -match 'Zira'} | Select-Object -First 1;"
+                "if ($voice) { $s.SelectVoice($voice.VoiceInfo.Name) };"
+                f"$s.Speak({ps_text});"
+            )
+            
+            cmd = ["powershell", "-Command", ps_script]
+            # Use CREATE_NO_WINDOW if on Windows to prevent console flashing
+            creationflags = 0x08000000 if os.name == 'nt' else 0
+            subprocess.run(cmd, check=False, creationflags=creationflags)
         except Exception as e:
             print(f"[VoiceAssistant] TTS error: {e}")
 
@@ -169,34 +193,21 @@ class AIVoiceAssistant:
             print("[VoiceAssistant] Throttled. Using offline.")
             return None
 
-        # Cache check
-        cache_key = user_text.lower().strip()
-        if cache_key in self._gemini_cache:
-            print("[VoiceAssistant] Cache hit. Skipping API call.")
-            return self._gemini_cache[cache_key]
-
+        # Bypassing cache for conversation mode to keep history dynamic
+        
         try:
-            prompt = (
-                "You are an AI driving assistant helping a sleepy driver. "
-                "Give short, clear spoken answers (max 2 sentences).\n"
-                f"Driver said: {user_text}"
-            )
-            response = self.gemini_model.generate_content(prompt)
+            response = self.chat_session.send_message(user_text)
 
             result = None
             if hasattr(response, "text"):
                 result = response.text.strip()
-            elif hasattr(response, "candidates"):
+            elif hasattr(response, "candidates") and response.candidates:
                 parts = response.candidates[0].content.parts
                 result = " ".join(getattr(p, "text", "") for p in parts).strip() or None
 
             if result:
                 # Update throttle timestamp
                 self._last_gemini_call = time.time()
-                # Cache the result (limit cache size)
-                if len(self._gemini_cache) >= self._gemini_cache_max:
-                    self._gemini_cache.pop(next(iter(self._gemini_cache)))
-                self._gemini_cache[cache_key] = result
 
             return result
 
@@ -233,9 +244,9 @@ class AIVoiceAssistant:
             self.handle_text_command(t)
             return
 
-        # Drowsiness keywords → offline only, never waste a Gemini call
+        # Drowsiness keywords - let Gemini handle it if cloud is enabled to start a conversation
         drowsy_keywords = ["tired", "sleepy", "drowsy", "sleep", "fatigue", "exhausted"]
-        if any(w in t for w in drowsy_keywords):
+        if not self.use_cloud_assistant and any(w in t for w in drowsy_keywords):
             self.handle_text_command(user_text)
             return
 

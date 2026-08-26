@@ -140,8 +140,11 @@ def trigger_voice_alert(level, custom_message=None):
 def listen_once(recognizer, microphone):
     with microphone as source:
         print("[System] Listening to driver...")
-        recognizer.adjust_for_ambient_noise(source, duration=0.8)
-        audio = recognizer.listen(source, phrase_time_limit=5)
+        try:
+            # We use timeout so it doesn't wait forever, and it returns quickly when you stop talking
+            audio = recognizer.listen(source, timeout=3.0, phrase_time_limit=5)
+        except sr.WaitTimeoutError:
+            return ""
     try:
         text = recognizer.recognize_google(audio, language="en-US")
         print(f"[Driver] {text}")
@@ -154,6 +157,10 @@ def listen_once(recognizer, microphone):
 def conversation_loop():
     global conversation_mode
     recognizer = sr.Recognizer()
+    
+    # Speed up voice recognition response
+    recognizer.pause_threshold = 0.5  # Returns faster after the user stops speaking
+    recognizer.non_speaking_duration = 0.3
 
     # Initialize microphone, fall back to default if index fails
     try:
@@ -161,17 +168,46 @@ def conversation_loop():
     except:
         microphone = sr.Microphone()
 
+    # Calibrate noise ONCE at the start, not every time we listen
+    with microphone as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1.0)
+
+    # Wait for the initial alert to finish speaking
+    while alert_active and conversation_mode:
+        time.sleep(0.5)
+        
+    if not conversation_mode:
+        return
+
+    print("[System] Initiating wake-up conversation...")
+    try:
+        assistant.handle_command_with_nlp_backend("I am getting drowsy. Let's talk. Ask me an interesting question to keep me awake.")
+    except Exception as e:
+        print(f"[System] Conversation init error: {e}")
+
+    consecutive_silence = 0
+
     while conversation_mode:
         text = listen_once(recognizer, microphone)
         if not text:
+            consecutive_silence += 1
+            # If silent for a few rounds, prompt again
+            if consecutive_silence >= 2:
+                print("[System] Driver is silent, prompting again...")
+                try:
+                    assistant.handle_command_with_nlp_backend("I didn't hear you. Are you still awake? Ask me another engaging question.")
+                except Exception:
+                    pass
+                consecutive_silence = 0
             continue
 
+        consecutive_silence = 0
         low = text.lower().strip()
 
         # Stop conversation if driver says exit phrase
-        if ("exit assistant" in low) or (low == "exit") or ("stop talking" in low):
+        if ("exit assistant" in low) or (low == "exit") or ("stop talking" in low) or ("shut up" in low):
             conversation_mode = False
-            assistant.speak("Okay, I will stop talking now, but I will keep monitoring.")
+            assistant.speak("Okay, I will stop talking now, but please stay awake.")
             break
 
         # Send driver input to AI assistant
