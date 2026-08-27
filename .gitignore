@@ -1,0 +1,15 @@
+# Security - Credentials
+firebase_credentials.json
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Data
+local_excel_data/
+
+# IDE files
+.vscode/
+
+# Virtual Environment
+.venv/
