@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="firebase-config.js"></script>
 
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -38,6 +40,18 @@
             <a href="#" class="flex items-center gap-3 bg-indigo-500/10 text-indigo-400 px-4 py-3 rounded-xl transition-colors font-medium">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                 Live Diagnostics
+            </a>
+            <a href="#session-analytics" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                Session Temp Graph
+            </a>
+            <a href="#dtc-errors" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                DTC Error Logs
+            </a>
+            <a href="#predictive-insights" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                Predictive Insights
             </a>
         </nav>
     </aside>
@@ -133,8 +147,34 @@
                 </div>
             </div>
 
+            <!-- SECTION 2.5: Historical Session Graph (Viva Challenge) -->
+            <div id="session-analytics" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
+                <div class="p-6 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/50">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                            <div class="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
+                                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                            </div>
+                            Session Temperature Analytics Graph
+                        </h2>
+                        <p class="text-sm text-slate-400 mt-1">Select any session to visualize Timestamp (X-Axis) vs Engine & Intake Temp (Y-Axis)</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <label for="session-select" class="text-sm font-medium text-slate-300 whitespace-nowrap">Select Session:</label>
+                        <select id="session-select" onchange="onSessionSelectChange(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="">Loading sessions...</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="p-6 relative min-h-[350px]">
+                    <canvas id="sessionTempChart" class="w-full max-h-[380px]"></canvas>
+                </div>
+            </div>
+
             <!-- SECTION 3: DTC Error Monitoring Table -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+            <div id="dtc-errors" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
                 <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
                     <h2 class="text-xl font-bold text-white flex items-center gap-3">
                         <div class="p-2 bg-red-500/10 rounded-lg border border-red-500/20">
@@ -173,24 +213,136 @@
                 </div>
             </div>
 
+            <!-- SECTION 4: AI Predictive Warnings (Historical Analysis) -->
+            <div id="predictive-insights" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
+                <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                            <span class="text-xl">🤖</span>
+                        </div>
+                        Predictive Insights (Historical Trend Analysis)
+                    </h2>
+                </div>
+                <div class="p-6 space-y-4" id="ai-warnings-container">
+                    <div class="text-slate-400 flex items-center gap-3">
+                        <span class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></span>
+                        Analyzing past sessions...
+                    </div>
+                </div>
+            </div>
+
         </div>
     </main>
 
     <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyC9UCscYxNfvzP4bF0YjXk5wyjIIIdpoQI",
-            authDomain: "obd2-scanner-app.firebaseapp.com",
-            databaseURL: "https://obd2-scanner-app-default-rtdb.firebaseio.com",
-            projectId: "obd2-scanner-app",
-            storageBucket: "obd2-scanner-app.firebasestorage.app",
-            messagingSenderId: "773495738323",
-            appId: "1:773495738323:web:c849a29b8e2b3863626926",
-            measurementId: "G-XN5J3C6CTN"
-        };
-        firebase.initializeApp(firebaseConfig);
+        // Check if external firebase-config.js is loaded
+        if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey.includes('YOUR_API_KEY')) {
+            console.error("Firebase config is missing! Please make sure 'firebase-config.js' exists with valid credentials.");
+            document.getElementById('session-id-display').innerText = "Config Missing (Check firebase-config.js)";
+        } else {
+            firebase.initializeApp(firebaseConfig);
+        }
         const db = firebase.database();
 
         const EXCLUDED_KEYS = ['Timestamp', 'SPEED', 'RPM', 'COOLANT_TEMP', 'ENGINE_LOAD', 'THROTTLE_POS', 'INTAKE_PRESSURE'];
+
+        function analyzeHistoricalSessions() {
+            // Fetch the last 5 sessions for historical trend analysis
+            db.ref('obd2_data').limitToLast(5).once('value', (snapshot) => {
+                const sessions = snapshot.val();
+                if (!sessions) return;
+                
+                const sessionKeys = Object.keys(sessions);
+                if (sessionKeys.length < 2) {
+                    document.getElementById('ai-warnings-container').innerHTML = 
+                        '<div class="text-slate-400 px-4 py-3 bg-slate-800/50 rounded-lg">Not enough historical sessions to generate predictions. System requires at least 2 sessions.</div>';
+                    return;
+                }
+
+                let historicalStats = {};
+
+                // Extract maximum values for each session for EVERY numeric sensor
+                sessionKeys.forEach(key => {
+                    const sessionData = sessions[key];
+                    let sessionMaxes = {};
+                    
+                    Object.values(sessionData).forEach(reading => {
+                        Object.keys(reading).forEach(sensor => {
+                            // Only track numbers, ignore timestamps/strings
+                            if (typeof reading[sensor] === 'number') {
+                                if (!sessionMaxes[sensor] || reading[sensor] > sessionMaxes[sensor]) {
+                                    sessionMaxes[sensor] = reading[sensor];
+                                }
+                            }
+                        });
+                    });
+                    
+                    // Add this session's maxes to the historical tracking arrays
+                    Object.keys(sessionMaxes).forEach(sensor => {
+                        if (!historicalStats[sensor]) historicalStats[sensor] = [];
+                        historicalStats[sensor].push(sessionMaxes[sensor]);
+                    });
+                });
+
+                let warningsHTML = '';
+                let anomaliesFound = 0;
+                
+                // Compare latest session to historical average for EVERY sensor
+                Object.keys(historicalStats).forEach(sensor => {
+                    const trend = historicalStats[sensor];
+                    // We need at least 2 data points to find a trend
+                    if (trend.length >= 2) {
+                        const latestVal = trend[trend.length - 1];
+                        // Calculate average of previous sessions
+                        const previousAvg = trend.slice(0, -1).reduce((a, b) => a + b, 0) / (trend.length - 1);
+                        
+                        // Ignore small variations for small numbers, and skip timestamps
+                        if (sensor.toLowerCase().includes('time') || previousAvg < 1) return;
+
+                        // Check for 15% higher anomaly
+                        if (latestVal > previousAvg * 1.15) {
+                            anomaliesFound++;
+                            warningsHTML += `
+                                <div class="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl shadow-sm mt-3">
+                                    <h3 class="text-orange-400 font-bold flex items-center gap-2">
+                                        <span class="text-xl">⚠️</span> High Anomaly: ${sensor.replace(/_/g, ' ')}
+                                    </h3>
+                                    <p class="text-slate-300 mt-1 text-sm">
+                                        Latest peak (<strong>${latestVal.toFixed(1)}</strong>) is unusually high compared to your historical average (<strong>${previousAvg.toFixed(1)}</strong>).
+                                    </p>
+                                </div>`;
+                        } 
+                        // Check for 15% lower anomaly
+                        else if (latestVal < previousAvg * 0.85) {
+                            anomaliesFound++;
+                             warningsHTML += `
+                                <div class="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl shadow-sm mt-3">
+                                    <h3 class="text-blue-400 font-bold flex items-center gap-2">
+                                        <span class="text-xl">📉</span> Low Anomaly: ${sensor.replace(/_/g, ' ')}
+                                    </h3>
+                                    <p class="text-slate-300 mt-1 text-sm">
+                                        Latest peak (<strong>${latestVal.toFixed(1)}</strong>) has dropped significantly below your historical average (<strong>${previousAvg.toFixed(1)}</strong>).
+                                    </p>
+                                </div>`;
+                        }
+                    }
+                });
+                
+                // If everything is completely normal
+                if (anomaliesFound === 0) {
+                     warningsHTML = `
+                        <div class="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-xl flex items-start gap-4 shadow-lg">
+                            <span class="text-3xl mt-1">✅</span>
+                            <div>
+                                <h3 class="text-emerald-400 font-bold text-lg">All Systems Stable</h3>
+                                <p class="text-slate-300 mt-1">Historical analysis across all vehicle sensors shows no significant anomalies. The vehicle is performing perfectly within normal historical parameters.</p>
+                            </div>
+                        </div>`;
+                }
+
+                document.getElementById('ai-warnings-container').innerHTML = warningsHTML;
+            });
+        }
 
         function updatePrimaryGauges(data) {
             const speed = data.SPEED || 0;
@@ -295,6 +447,156 @@
                 renderErrors(latestSessionObj);
             }
         });
+
+        // Run historical analysis once on load
+        analyzeHistoricalSessions();
+
+        // Viva Challenge: Session Temperature Analytics Graph
+        let sessionChartInstance = null;
+        let allFirebaseSessionsData = {};
+
+        function initSessionChart() {
+            const canvasEl = document.getElementById('sessionTempChart');
+            if (!canvasEl) return;
+            const ctx = canvasEl.getContext('2d');
+            sessionChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Intake Air Temp (°C) [INTAKE_TEMP]',
+                            data: [],
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Engine Coolant Temp (°C) [COOLANT_TEMP]',
+                            data: [],
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            title: { display: true, text: 'Timestamp / Reading Time (X-Axis)', color: '#64748b' }
+                        },
+                        y: {
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            title: { display: true, text: 'Temperature °C (Y-Axis)', color: '#64748b' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#cbd5e1', font: { size: 13, weight: '500' } }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSessionGraphData() {
+            db.ref('obd2_data').once('value', (snapshot) => {
+                const sessions = snapshot.val();
+                if (!sessions) return;
+                allFirebaseSessionsData = sessions;
+                
+                const selectEl = document.getElementById('session-select');
+                if (!selectEl) return;
+                selectEl.innerHTML = '';
+                
+                const sessionKeys = Object.keys(sessions);
+                sessionKeys.reverse(); // Show latest sessions first
+
+                sessionKeys.forEach(sKey => {
+                    const opt = document.createElement('option');
+                    opt.value = sKey;
+                    
+                    const sessionReadings = sessions[sKey];
+                    const readingKeys = Object.keys(sessionReadings);
+                    const firstReading = sessionReadings[readingKeys[0]];
+                    let dateStr = "";
+                    if (firstReading && firstReading.Timestamp) {
+                        try {
+                            const d = new Date(firstReading.Timestamp);
+                            dateStr = " (" + d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
+                        } catch(e) {}
+                    }
+                    opt.innerText = sKey + dateStr;
+                    selectEl.appendChild(opt);
+                });
+
+                if (sessionKeys.length > 0) {
+                    renderSessionGraph(sessionKeys[0]);
+                }
+            });
+        }
+
+        function onSessionSelectChange(sessionId) {
+            if (sessionId && allFirebaseSessionsData[sessionId]) {
+                renderSessionGraph(sessionId);
+            }
+        }
+
+        function renderSessionGraph(sessionId) {
+            const sessionObj = allFirebaseSessionsData[sessionId];
+            if (!sessionObj) return;
+
+            const labels = [];
+            const intakeData = [];
+            const coolantData = [];
+
+            Object.values(sessionObj).forEach((reading, index) => {
+                let timeLabel = `Reading ${index + 1}`;
+                if (reading.Timestamp) {
+                    try {
+                        const d = new Date(reading.Timestamp);
+                        timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch(e) {
+                        timeLabel = String(reading.Timestamp).substring(11, 19);
+                    }
+                }
+                labels.push(timeLabel);
+
+                const intake = reading.INTAKE_TEMP !== undefined ? reading.INTAKE_TEMP : (reading.intake_temp !== undefined ? reading.intake_temp : null);
+                const coolant = reading.COOLANT_TEMP !== undefined ? reading.COOLANT_TEMP : (reading.coolant_temp !== undefined ? reading.coolant_temp : null);
+
+                intakeData.push(intake);
+                coolantData.push(coolant);
+            });
+
+            if (sessionChartInstance) {
+                sessionChartInstance.data.labels = labels;
+                sessionChartInstance.data.datasets[0].data = intakeData;
+                sessionChartInstance.data.datasets[1].data = coolantData;
+                sessionChartInstance.update();
+            }
+        }
+
+        // Initialize Session Temperature Graph on page load
+        initSessionChart();
+        loadSessionGraphData();
     </script>
 </body>
 </html>
