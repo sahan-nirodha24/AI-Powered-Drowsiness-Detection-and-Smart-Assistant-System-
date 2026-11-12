@@ -1,5 +1,10 @@
 # Security - Credentials
 firebase_credentials.json
+.env
+
+# Python Virtual Environments
+.venv/
+venv/
 
 # Python Cache
 __pycache__/
@@ -11,5 +16,5 @@ local_excel_data/
 # IDE files
 .vscode/
 
-# Virtual Environment
-.venv/
+# Ignore test output
+mic_test.py
