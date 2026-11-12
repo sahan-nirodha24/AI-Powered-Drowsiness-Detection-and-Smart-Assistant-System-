@@ -1,2 +1,21 @@
-# Sensitive Web Credentials
+# Security - Credentials
 firebase-config.js
+firebase_credentials.json
+.env
+
+# Python Virtual Environments
+.venv/
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Data
+local_excel_data/
+
+# IDE files
+.vscode/
+
+# Ignore test output
+mic_test.py
