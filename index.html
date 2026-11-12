@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBDPro - Professional Vehicle Diagnostics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="firebase-config.js"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .circular-chart { display: block; margin: 0 auto; max-width: 100%; max-height: 180px; }
+        .circle-bg { fill: none; stroke: #1e293b; stroke-width: 2.5; }
+        .circle {
+            fill: none; stroke-width: 2.5; stroke-linecap: round;
+            stroke-dasharray: 100, 100; transition: stroke-dasharray 0.5s ease-out;
+        }
+        .speed-circle { stroke: #38bdf8; filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.5)); }
+        .rpm-circle { stroke: #818cf8; filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.5)); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans flex h-screen overflow-hidden selection:bg-indigo-500 selection:text-white">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-slate-900 border-r border-slate-800 hidden md:flex flex-col">
+        <div class="p-6 flex items-center gap-3">
+            <div class="bg-indigo-500 p-2 rounded-lg">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <div class="font-bold text-2xl tracking-wide text-white">OBD<span class="text-indigo-400">Pro</span></div>
+        </div>
+        <nav class="flex-1 px-4 mt-6 space-y-2">
+            <a href="#" class="flex items-center gap-3 bg-indigo-500/10 text-indigo-400 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Live Diagnostics
+            </a>
+            <a href="#session-analytics" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                Session Temp Graph
+            </a>
+            <a href="#dtc-errors" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                DTC Error Logs
+            </a>
+            <a href="#predictive-insights" class="flex items-center gap-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 px-4 py-3 rounded-xl transition-colors font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                Predictive Insights
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-screen overflow-y-auto relative">
+        <header class="px-8 py-6 border-b border-slate-800/50 flex justify-between items-center bg-slate-900/80 backdrop-blur-md sticky top-0 z-10">
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Live Diagnostics Hub</h1>
+                <p class="text-sm text-slate-400 mt-1">Real-time telemetry stream via Cloud Sync</p>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700/50">
+                <span class="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                <span class="text-sm font-medium text-slate-300" id="session-id-display">Connecting to Firebase...</span>
+            </div>
+        </header>
+
+        <div class="p-8 space-y-8 max-w-[1600px] mx-auto w-full">
+            <!-- SECTION 1: Primary Gauges -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Speed Gauge -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative flex flex-col items-center justify-center shadow-lg">
+                    <svg viewBox="0 0 36 36" class="circular-chart w-full max-w-[160px]">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle speed-circle" id="speed-path" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                        <span class="text-slate-400 text-sm font-medium mb-1">Vehicle Speed</span>
+                        <span class="text-4xl font-bold text-white tracking-tighter" id="val-speed">0</span>
+                        <span class="text-slate-500 text-xs font-semibold mt-1 uppercase">km/h</span>
+                    </div>
+                </div>
+
+                <!-- RPM Gauge -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative flex flex-col items-center justify-center shadow-lg">
+                    <svg viewBox="0 0 36 36" class="circular-chart w-full max-w-[160px]">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle rpm-circle" id="rpm-path" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                        <span class="text-slate-400 text-sm font-medium mb-1">Engine RPM</span>
+                        <span class="text-4xl font-bold text-white tracking-tighter" id="val-rpm">0</span>
+                        <span class="text-slate-500 text-xs font-semibold mt-1 uppercase">rev/min</span>
+                    </div>
+                </div>
+
+                <!-- Secondary Highlights -->
+                <div class="flex flex-col gap-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex-1 shadow-lg flex items-center gap-5">
+                        <div class="bg-orange-500/10 p-4 rounded-xl border border-orange-500/20"><span class="text-2xl">⚙️</span></div>
+                        <div>
+                            <div class="text-sm font-medium text-slate-400 mb-1">Engine Load</div>
+                            <div class="text-3xl font-bold text-white flex items-baseline gap-1"><span id="val-load">--</span> <span class="text-base font-semibold text-slate-500">%</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex-1 shadow-lg flex items-center gap-5">
+                        <div class="bg-red-500/10 p-4 rounded-xl border border-red-500/20"><span class="text-2xl">🌡️</span></div>
+                        <div>
+                            <div class="text-sm font-medium text-slate-400 mb-1">Coolant Temp</div>
+                            <div class="text-3xl font-bold text-white flex items-baseline gap-1"><span id="val-temp">--</span> <span class="text-base font-semibold text-slate-500">°C</span></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col gap-6">
+                     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex-1 shadow-lg flex items-center gap-5">
+                        <div class="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20"><span class="text-2xl">🎛️</span></div>
+                        <div>
+                            <div class="text-sm font-medium text-slate-400 mb-1">Throttle Pos</div>
+                            <div class="text-3xl font-bold text-white flex items-baseline gap-1"><span id="val-throttle">--</span> <span class="text-base font-semibold text-slate-500">%</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex-1 shadow-lg flex items-center gap-5">
+                        <div class="bg-blue-500/10 p-4 rounded-xl border border-blue-500/20"><span class="text-2xl">💨</span></div>
+                        <div>
+                            <div class="text-sm font-medium text-slate-400 mb-1">Intake Pressure</div>
+                            <div class="text-3xl font-bold text-white flex items-baseline gap-1"><span id="val-intake">--</span> <span class="text-base font-semibold text-slate-500">kPa</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: Complete Telemetry Grid -->
+            <div>
+                <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                    Live Sensor Matrix (All Parameters)
+                </h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4" id="telemetry-grid">
+                    <div class="col-span-full bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-center h-24 text-slate-500">
+                        Awaiting data stream...
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2.5: Historical Session Graph (Viva Challenge) -->
+            <div id="session-analytics" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
+                <div class="p-6 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/50">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                            <div class="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
+                                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                            </div>
+                            Session Temperature Analytics Graph
+                        </h2>
+                        <p class="text-sm text-slate-400 mt-1">Select any session to visualize Timestamp (X-Axis) vs Engine & Intake Temp (Y-Axis)</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <label for="session-select" class="text-sm font-medium text-slate-300 whitespace-nowrap">Select Session:</label>
+                        <select id="session-select" onchange="onSessionSelectChange(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="">Loading sessions...</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="p-6 relative min-h-[350px]">
+                    <canvas id="sessionTempChart" class="w-full max-h-[380px]"></canvas>
+                </div>
+            </div>
+
+            <!-- SECTION 3: DTC Error Monitoring Table -->
+            <div id="dtc-errors" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
+                <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-red-500/10 rounded-lg border border-red-500/20">
+                            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        </div>
+                        Diagnostic Trouble Codes (DTC)
+                    </h2>
+                    <div class="bg-slate-800 border border-slate-700 px-4 py-1.5 rounded-full flex items-center gap-2">
+                        <span class="text-sm font-medium text-slate-300">Total Active Faults:</span>
+                        <span class="text-lg font-bold text-white" id="error-count-badge">0</span>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-950/50 text-slate-400 text-sm uppercase tracking-wider">
+                                <th class="px-6 py-4 font-semibold border-b border-slate-800">Fault Code</th>
+                                <th class="px-6 py-4 font-semibold border-b border-slate-800">Category</th>
+                                <th class="px-6 py-4 font-semibold border-b border-slate-800">Description</th>
+                                <th class="px-6 py-4 font-semibold border-b border-slate-800">Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="error-table-body" class="divide-y divide-slate-800/50">
+                            <tr>
+                                <td colspan="4" class="px-6 py-12 text-center">
+                                    <div class="flex flex-col items-center justify-center text-slate-500">
+                                        <svg class="w-12 h-12 mb-3 text-emerald-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        <p class="text-lg font-medium text-slate-400">All Systems Healthy</p>
+                                        <p class="text-sm">No active powertrain faults detected in the current session.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SECTION 4: AI Predictive Warnings (Historical Analysis) -->
+            <div id="predictive-insights" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg mt-8">
+                <div class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                            <span class="text-xl">🤖</span>
+                        </div>
+                        Predictive Insights (Historical Trend Analysis)
+                    </h2>
+                </div>
+                <div class="p-6 space-y-4" id="ai-warnings-container">
+                    <div class="text-slate-400 flex items-center gap-3">
+                        <span class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></span>
+                        Analyzing past sessions...
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // Check if external firebase-config.js is loaded
+        if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey.includes('YOUR_API_KEY')) {
+            console.error("Firebase config is missing! Please make sure 'firebase-config.js' exists with valid credentials.");
+            document.getElementById('session-id-display').innerText = "Config Missing (Check firebase-config.js)";
+        } else {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const EXCLUDED_KEYS = ['Timestamp', 'SPEED', 'RPM', 'COOLANT_TEMP', 'ENGINE_LOAD', 'THROTTLE_POS', 'INTAKE_PRESSURE'];
+
+        function analyzeHistoricalSessions() {
+            // Fetch the last 5 sessions for historical trend analysis
+            db.ref('obd2_data').limitToLast(5).once('value', (snapshot) => {
+                const sessions = snapshot.val();
+                if (!sessions) return;
+                
+                const sessionKeys = Object.keys(sessions);
+                if (sessionKeys.length < 2) {
+                    document.getElementById('ai-warnings-container').innerHTML = 
+                        '<div class="text-slate-400 px-4 py-3 bg-slate-800/50 rounded-lg">Not enough historical sessions to generate predictions. System requires at least 2 sessions.</div>';
+                    return;
+                }
+
+                let historicalStats = {};
+
+                // Extract maximum values for each session for EVERY numeric sensor
+                sessionKeys.forEach(key => {
+                    const sessionData = sessions[key];
+                    let sessionMaxes = {};
+                    
+                    Object.values(sessionData).forEach(reading => {
+                        Object.keys(reading).forEach(sensor => {
+                            // Only track numbers, ignore timestamps/strings
+                            if (typeof reading[sensor] === 'number') {
+                                if (!sessionMaxes[sensor] || reading[sensor] > sessionMaxes[sensor]) {
+                                    sessionMaxes[sensor] = reading[sensor];
+                                }
+                            }
+                        });
+                    });
+                    
+                    // Add this session's maxes to the historical tracking arrays
+                    Object.keys(sessionMaxes).forEach(sensor => {
+                        if (!historicalStats[sensor]) historicalStats[sensor] = [];
+                        historicalStats[sensor].push(sessionMaxes[sensor]);
+                    });
+                });
+
+                let warningsHTML = '';
+                let anomaliesFound = 0;
+                
+                // Compare latest session to historical average for EVERY sensor
+                Object.keys(historicalStats).forEach(sensor => {
+                    const trend = historicalStats[sensor];
+                    // We need at least 2 data points to find a trend
+                    if (trend.length >= 2) {
+                        const latestVal = trend[trend.length - 1];
+                        // Calculate average of previous sessions
+                        const previousAvg = trend.slice(0, -1).reduce((a, b) => a + b, 0) / (trend.length - 1);
+                        
+                        // Ignore small variations for small numbers, and skip timestamps
+                        if (sensor.toLowerCase().includes('time') || previousAvg < 1) return;
+
+                        // Check for 15% higher anomaly
+                        if (latestVal > previousAvg * 1.15) {
+                            anomaliesFound++;
+                            warningsHTML += `
+                                <div class="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl shadow-sm mt-3">
+                                    <h3 class="text-orange-400 font-bold flex items-center gap-2">
+                                        <span class="text-xl">⚠️</span> High Anomaly: ${sensor.replace(/_/g, ' ')}
+                                    </h3>
+                                    <p class="text-slate-300 mt-1 text-sm">
+                                        Latest peak (<strong>${latestVal.toFixed(1)}</strong>) is unusually high compared to your historical average (<strong>${previousAvg.toFixed(1)}</strong>).
+                                    </p>
+                                </div>`;
+                        } 
+                        // Check for 15% lower anomaly
+                        else if (latestVal < previousAvg * 0.85) {
+                            anomaliesFound++;
+                             warningsHTML += `
+                                <div class="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl shadow-sm mt-3">
+                                    <h3 class="text-blue-400 font-bold flex items-center gap-2">
+                                        <span class="text-xl">📉</span> Low Anomaly: ${sensor.replace(/_/g, ' ')}
+                                    </h3>
+                                    <p class="text-slate-300 mt-1 text-sm">
+                                        Latest peak (<strong>${latestVal.toFixed(1)}</strong>) has dropped significantly below your historical average (<strong>${previousAvg.toFixed(1)}</strong>).
+                                    </p>
+                                </div>`;
+                        }
+                    }
+                });
+                
+                // If everything is completely normal
+                if (anomaliesFound === 0) {
+                     warningsHTML = `
+                        <div class="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-xl flex items-start gap-4 shadow-lg">
+                            <span class="text-3xl mt-1">✅</span>
+                            <div>
+                                <h3 class="text-emerald-400 font-bold text-lg">All Systems Stable</h3>
+                                <p class="text-slate-300 mt-1">Historical analysis across all vehicle sensors shows no significant anomalies. The vehicle is performing perfectly within normal historical parameters.</p>
+                            </div>
+                        </div>`;
+                }
+
+                document.getElementById('ai-warnings-container').innerHTML = warningsHTML;
+            });
+        }
+
+        function updatePrimaryGauges(data) {
+            const speed = data.SPEED || 0;
+            const rpm = data.RPM || 0;
+            
+            document.getElementById('val-speed').innerText = speed.toFixed(0);
+            document.getElementById('val-rpm').innerText = rpm.toFixed(0);
+            document.getElementById('val-load').innerText = data.ENGINE_LOAD ? data.ENGINE_LOAD.toFixed(1) : '--';
+            document.getElementById('val-temp').innerText = data.COOLANT_TEMP ? data.COOLANT_TEMP.toFixed(0) : '--';
+            document.getElementById('val-throttle').innerText = data.THROTTLE_POS ? data.THROTTLE_POS.toFixed(1) : '--';
+            document.getElementById('val-intake').innerText = data.INTAKE_PRESSURE ? data.INTAKE_PRESSURE.toFixed(0) : '--';
+
+            const speedPercentage = Math.min((speed / 200) * 100, 100);
+            const rpmPercentage = Math.min((rpm / 8000) * 100, 100);
+            document.getElementById('speed-path').setAttribute('stroke-dasharray', `${speedPercentage}, 100`);
+            document.getElementById('rpm-path').setAttribute('stroke-dasharray', `${rpmPercentage}, 100`);
+        }
+
+        function updateTelemetryGrid(data) {
+            const grid = document.getElementById('telemetry-grid');
+            grid.innerHTML = ''; 
+            
+            Object.keys(data).forEach(key => {
+                if (!EXCLUDED_KEYS.includes(key)) {
+                    let value = data[key];
+                    if(typeof value === 'number') value = value.toFixed(2);
+                    
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors";
+                    card.innerHTML = `
+                        <div class="text-xs font-medium text-slate-500 mb-1 truncate" title="${key}">${key.replace(/_/g, ' ')}</div>
+                        <div class="text-xl font-bold text-slate-200">${value !== null ? value : '--'}</div>
+                    `;
+                    grid.appendChild(card);
+                }
+            });
+            
+            if (grid.innerHTML === '') {
+                grid.innerHTML = '<div class="col-span-full text-slate-500 p-4">No additional parameters found in this stream.</div>';
+            }
+        }
+
+        function renderErrors(sessionObj) {
+            const tbody = document.getElementById('error-table-body');
+            const countBadge = document.getElementById('error-count-badge');
+            
+            if (!sessionObj) return;
+            
+            const errorKeys = Object.keys(sessionObj);
+            const errorCount = errorKeys.length;
+            
+            if (errorCount === 0) return; 
+            
+            tbody.innerHTML = ''; 
+            countBadge.innerText = errorCount;
+            countBadge.className = "text-lg font-bold text-red-400"; 
+
+            errorKeys.forEach(key => {
+                const err = sessionObj[key];
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/30 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 border-b border-slate-800/50">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-red-500/10 text-red-400 font-bold font-mono text-sm border border-red-500/20">
+                            ${err.code || 'N/A'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 border-b border-slate-800/50 text-slate-300 text-sm">${err.type || 'N/A'}</td>
+                    <td class="px-6 py-4 border-b border-slate-800/50 font-medium text-white">${err.description || 'N/A'}</td>
+                    <td class="px-6 py-4 border-b border-slate-800/50 text-slate-500 text-xs font-mono">${err.timestamp || 'N/A'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        db.ref('obd2_data').limitToLast(1).on('value', (snapshot) => {
+            const sessions = snapshot.val();
+            if (sessions) {
+                const sessionKeys = Object.keys(sessions);
+                const activeSessionId = sessionKeys[0];
+                
+                document.getElementById('session-id-display').innerText = "Session: " + activeSessionId;
+                
+                const latestSession = sessions[activeSessionId];
+                if (latestSession) {
+                    const readingKeys = Object.keys(latestSession);
+                    const latestReading = latestSession[readingKeys[readingKeys.length - 1]];
+                    
+                    if (latestReading) {
+                        updatePrimaryGauges(latestReading);
+                        updateTelemetryGrid(latestReading);
+                    }
+                }
+            }
+        });
+
+        db.ref('obd2_errors').limitToLast(1).on('value', (snapshot) => {
+            const sessions = snapshot.val();
+            if (sessions) {
+                const sessionKeys = Object.keys(sessions);
+                const latestSessionObj = sessions[sessionKeys[0]];
+                renderErrors(latestSessionObj);
+            }
+        });
+
+        // Run historical analysis once on load
+        analyzeHistoricalSessions();
+
+        // Viva Challenge: Session Temperature Analytics Graph
+        let sessionChartInstance = null;
+        let allFirebaseSessionsData = {};
+
+        function initSessionChart() {
+            const canvasEl = document.getElementById('sessionTempChart');
+            if (!canvasEl) return;
+            const ctx = canvasEl.getContext('2d');
+            sessionChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Intake Air Temp (°C) [INTAKE_TEMP]',
+                            data: [],
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Engine Coolant Temp (°C) [COOLANT_TEMP]',
+                            data: [],
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            title: { display: true, text: 'Timestamp / Reading Time (X-Axis)', color: '#64748b' }
+                        },
+                        y: {
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            title: { display: true, text: 'Temperature °C (Y-Axis)', color: '#64748b' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#cbd5e1', font: { size: 13, weight: '500' } }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadSessionGraphData() {
+            db.ref('obd2_data').once('value', (snapshot) => {
+                const sessions = snapshot.val();
+                if (!sessions) return;
+                allFirebaseSessionsData = sessions;
+                
+                const selectEl = document.getElementById('session-select');
+                if (!selectEl) return;
+                selectEl.innerHTML = '';
+                
+                const sessionKeys = Object.keys(sessions);
+                sessionKeys.reverse(); // Show latest sessions first
+
+                sessionKeys.forEach(sKey => {
+                    const opt = document.createElement('option');
+                    opt.value = sKey;
+                    
+                    const sessionReadings = sessions[sKey];
+                    const readingKeys = Object.keys(sessionReadings);
+                    const firstReading = sessionReadings[readingKeys[0]];
+                    let dateStr = "";
+                    if (firstReading && firstReading.Timestamp) {
+                        try {
+                            const d = new Date(firstReading.Timestamp);
+                            dateStr = " (" + d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
+                        } catch(e) {}
+                    }
+                    opt.innerText = sKey + dateStr;
+                    selectEl.appendChild(opt);
+                });
+
+                if (sessionKeys.length > 0) {
+                    renderSessionGraph(sessionKeys[0]);
+                }
+            });
+        }
+
+        function onSessionSelectChange(sessionId) {
+            if (sessionId && allFirebaseSessionsData[sessionId]) {
+                renderSessionGraph(sessionId);
+            }
+        }
+
+        function renderSessionGraph(sessionId) {
+            const sessionObj = allFirebaseSessionsData[sessionId];
+            if (!sessionObj) return;
+
+            const labels = [];
+            const intakeData = [];
+            const coolantData = [];
+
+            Object.values(sessionObj).forEach((reading, index) => {
+                let timeLabel = `Reading ${index + 1}`;
+                if (reading.Timestamp) {
+                    try {
+                        const d = new Date(reading.Timestamp);
+                        timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch(e) {
+                        timeLabel = String(reading.Timestamp).substring(11, 19);
+                    }
+                }
+                labels.push(timeLabel);
+
+                const intake = reading.INTAKE_TEMP !== undefined ? reading.INTAKE_TEMP : (reading.intake_temp !== undefined ? reading.intake_temp : null);
+                const coolant = reading.COOLANT_TEMP !== undefined ? reading.COOLANT_TEMP : (reading.coolant_temp !== undefined ? reading.coolant_temp : null);
+
+                intakeData.push(intake);
+                coolantData.push(coolant);
+            });
+
+            if (sessionChartInstance) {
+                sessionChartInstance.data.labels = labels;
+                sessionChartInstance.data.datasets[0].data = intakeData;
+                sessionChartInstance.data.datasets[1].data = coolantData;
+                sessionChartInstance.update();
+            }
+        }
+
+        // Initialize Session Temperature Graph on page load
+        initSessionChart();
+        loadSessionGraphData();
+    </script>
+</body>
+</html>

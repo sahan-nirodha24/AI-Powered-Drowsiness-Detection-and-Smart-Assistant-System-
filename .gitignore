@@ -1,4 +1,5 @@
 # Security - Credentials
+firebase-config.js
 firebase_credentials.json
 .env
 
