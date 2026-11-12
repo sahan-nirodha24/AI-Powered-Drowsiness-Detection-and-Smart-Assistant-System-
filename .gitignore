@@ -1,13 +1,20 @@
-# Ignore environment variables
+# Security - Credentials
+firebase_credentials.json
 .env
 
-# Ignore Python virtual environments
-venv/
+# Python Virtual Environments
 .venv/
+venv/
 
-# Ignore Python cache
+# Python Cache
 __pycache__/
-*.pyc 
+*.pyc
+
+# Local Data
+local_excel_data/
+
+# IDE files
+.vscode/
 
 # Ignore test output
 mic_test.py
